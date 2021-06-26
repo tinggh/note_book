@@ -11,10 +11,10 @@ import os.path as P
 import cv2
 import numpy as np
 
-_base_dir = "/home/ting/Documents/data/finance/选取的报表"
+_base_dir = "images"
 img_list = sorted(os.listdir(_base_dir))
 
-img_path = P.join(_base_dir, img_list[12])
+img_path = P.join(_base_dir, img_list[4])
 raw = cv2.imread(img_path)
 # h, w = raw.shape[:2]
 # long_size = 1600
@@ -74,13 +74,26 @@ contours, hierarchy = cv2.findContours(erode_image, cv2.RETR_TREE, cv2.CHAIN_APP
 cv2.drawContours(raw.copy(), contours, -1, (0, 0, 255), 3)
 cv2.imwrite('tmp/contour_image.jpg', raw)    
 
-
+cells = []
 for k, cn in enumerate(contours[::-1]):
     x, y, w, h = cv2.boundingRect(cn)
     if h < 5 or w < 5:
         continue
-    cv2.rectangle(raw, (x, y), (x+w, y+h), (0, 0, 255))
-    cv2.putText(raw, str(k), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+    cell = np.array([x, y, x+w, y+h], dtype=np.int16)
+    cells.append(cell)
+    
+    
+from table_layout import cell_layout   
+vertical_sum = np.sum(erode_image, axis=0)
+table = cell_layout(cells, vertical_sum)
+cells = table["cells"]
+for k, oc in enumerate(cells):
+    r = oc["row"]
+    sc = oc["start_col"]
+    ec = oc["end_col"]
+    x1, y1, x2, y2 = oc["box"]
+    cv2.rectangle(raw, (x1, y1), (x2, y2), (0, 0, 255))
+    cv2.putText(raw, f'{r}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
 cv2.imwrite("result.jpg", raw)
 
@@ -109,3 +122,5 @@ plt.savefig('vertical_projec.jpg')
 # res = center[label.flatten()]
 # plt.plot(range(res.shape[0]), res)
 # plt.show()
+
+vertical_sum = np.sum(erode_image, axis=0)
