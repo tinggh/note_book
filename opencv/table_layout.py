@@ -6,71 +6,15 @@
 @Author:ttt
 """
 
+import os
+import os.path as P
+import cv2
+
 import numpy as np
 
+from table_detect_no_line import (find_max_cols, get_cells, get_col, is_inline,
+                                  get_cut_point)
 
-def is_inline(a, b, thr=0.15):
-    hiou = min(b[3], a[3]) - max(b[1], a[1])
-    flag = False
-    if hiou > 0:
-        h = min(b[3] - b[1], a[3] - a[1])
-        flag = hiou/h > thr
-    return flag
-
-
-def find_max_cols(cells):
-    max_cols = 1
-    i = 0
-    s = e = i
-    while i < len(cells):
-        sc = cells[i]
-        j = i+1
-        while j < len(cells):
-            ec = cells[j]
-            if is_inline(sc, ec, thr=0):
-                j += 1
-            else:
-                break
-        
-        if j-i > max_cols:
-            max_cols = j-i
-            s = i
-            e = j-1
-        i = j
-    return s, e
-
-
-def get_cut_point(vertical_sum, cells, s, e):
-    cut_point = []
-    for k in range(s, e+1):
-        if k == s:
-            j = cells[k][0]
-            p = np.argmin(vertical_sum[0:j])
-            i = cells[k][2]
-        else:
-            j = cells[k][0]
-            if j < i:
-                continue
-            p = i + np.argmin(vertical_sum[i:j])
-            i = cells[k][2]
-        cut_point.append(p)
-        
-    return cut_point
-
-
-def get_col(cell, cut_point):
-    sx = cell[0]
-    ex = cell[2]
-    i = 0
-    while i < len(cut_point) and sx > cut_point[i]:
-        i += 1
-    si = i -1
-    
-    j = si
-    while j < len(cut_point) and ex > cut_point[j]:
-       j += 1
-    ei = j-1
-    return si, ei    
 
 
 def is_prior(a, b):
@@ -126,3 +70,25 @@ def cell_layout(cells, vertical_sum):
         oc.append(dc)
     table = dict(cells=oc)        
     return table
+
+
+
+if __name__ == '__main__':
+    _base_dir = "images"
+    img_list = sorted(os.listdir(_base_dir))
+    
+    for i, img_name in enumerate(img_list):
+        img_path = P.join(_base_dir, img_name)
+        image = cv2.imread(img_path)
+        cells, vertical_sum, _ = get_cells(image)
+        table = cell_layout(cells, vertical_sum)
+        cells = table["cells"]
+        for k, oc in enumerate(cells):
+            r = oc["row"]
+            sc = oc["start_col"]
+            ec = oc["end_col"]
+            x1, y1, x2, y2 = oc["box"]
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255))
+            cv2.putText(image, f'{r}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+        cv2.imwrite(f"tmp/result_{i}.jpg", image)
