@@ -7,8 +7,13 @@
 """
 
 
+import os
+import os.path as P
+
 import cv2
 import numpy as np
+
+from table_layout import cell_layout, quick_sort, is_inline
 
 
 def get_cells(image):
@@ -39,6 +44,7 @@ def get_cells(image):
     dilate_image = cv2.dilate(merge2, new_kernel, iterations=3)
     new_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     erode_image = cv2.erode(dilate_image, new_kernel, iterations=1)
+    cv2.imwrite("tmp/erode_image.jpg", erode_image)
     vertical_sum = np.sum(erode_image, axis=0)
     
     contours, hierarchy = cv2.findContours(erode_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -50,16 +56,11 @@ def get_cells(image):
             continue
         cell = np.array([x, y, x+w, y+h], dtype=np.int16)
         cells.append(cell)
-    return cells, vertical_sum, erode_image
+    cells = quick_sort(cells, 0, len(cells)-1)
+    s, e = find_max_cols(cells)
+    x_cut_point = get_x_cut_point(vertical_sum, cells, s, e)
+    return cells, x_cut_point, erode_image
 
-
-def is_inline(a, b, thr=0.15):
-    hiou = min(b[3], a[3]) - max(b[1], a[1])
-    flag = False
-    if hiou > 0:
-        h = min(b[3] - b[1], a[3] - a[1])
-        flag = hiou/h > thr
-    return flag 
 
 def find_max_cols(cells):
     max_cols = 1
@@ -83,7 +84,7 @@ def find_max_cols(cells):
     return s, e
 
 
-def get_cut_point(vertical_sum, cells, s, e):
+def get_x_cut_point(vertical_sum, cells, s, e):
     cut_point = []
     for k in range(s, e+1):
         if k == s:
@@ -97,24 +98,27 @@ def get_cut_point(vertical_sum, cells, s, e):
             p = i + np.argmin(vertical_sum[i:j])
             i = cells[k][2]
         cut_point.append(p)
-        
+
     return cut_point
 
 
-def get_col(cell, cut_point):
-    sx = cell[0]
-    ex = cell[2]
-    h = cell[3] - cell[1]
-    i = 0
-    while i < len(cut_point) and sx > cut_point[i]-h/2:
-        i += 1
-    si = i -1
+if __name__ == '__main__':
+    _base_dir = "images/nolines/"
+    img_list = sorted(os.listdir(_base_dir))
     
-    j = si
-    while j < len(cut_point) and ex > cut_point[j]+h/2:
-       j += 1
-    ei = j-1
-    return si, ei   
-
-
-
+    for i, img_name in enumerate(img_list):
+        img_path = P.join(_base_dir, img_name)
+        image = cv2.imread(img_path)
+        cells, x_cut_point, _ = get_cells(image)
+        table = cell_layout(cells, x_cut_point)
+        cells = table["cells"]
+        for k, oc in enumerate(cells):
+            sr = oc["start_row"]
+            er = oc["end_row"]
+            sc = oc["start_col"]
+            ec = oc["end_col"]
+            x1, y1, x2, y2 = oc["box"]
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255))
+            cv2.putText(image, f'{k}_{sr}:{er}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            
+        cv2.imwrite(f"tmp/result_{i}.jpg", image)

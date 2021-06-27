@@ -6,16 +6,19 @@
 @Author:ttt
 """
 
-import os
-import os.path as P
-import cv2
 
+import cv2
 import numpy as np
 
-from table_detect_no_line import (find_max_cols, get_cells, get_col, is_inline,
-                                  get_cut_point)
 
-
+def is_inline(a, b, thr=0.15):
+    hiou = min(b[3], a[3]) - max(b[1], a[1])
+    ha = a[3] - a[1]
+    hb = b[3] - b[1]
+    flag = False
+    if hiou > 0:
+        flag = hiou/min(hb, ha) > thr
+    return flag 
 
 def is_prior(a, b):
     flag = False
@@ -47,48 +50,92 @@ def quick_sort(data_list, low, high):
     quick_sort(data_list, low, i - 1)
     quick_sort(data_list, j + 1, high)
     return data_list
+
+
+
+def get_index(sx, ex, cut_point, threshold=0):
+    if ex < cut_point[0]-threshold:
+        ei = -1
+        si = -1
+        return si, ei
+    
+    if sx > cut_point[-1]+threshold:
+        si = len(cut_point)
+        ei = len(cut_point)
+        return si, ei
+    
+    i = 0
+    while i < len(cut_point) and sx > cut_point[i]-threshold:
+        i += 1
+    si = i -1
+    
+    j = si
+    while j < len(cut_point) and ex > cut_point[j]+ threshold:
+       j += 1
+    ei = j-1
+    return si, ei
+
     
 
-def cell_layout(cells, vertical_sum):
-    cells = quick_sort(cells, 0, len(cells)-1)
-    s, e = find_max_cols(cells)
-    cut_point = get_cut_point(vertical_sum, cells, s, e)
-    
-    oc = []
+def cell_layout(cells, x_cut_point):
+    ocs = []
     r = 0
+    frow = cells[0]
     for k, cell in enumerate(cells):
-        sc, ec = get_col(cell, cut_point)
-        if sc == 0:
+        sc, ec = get_index(cell[0], cell[2], x_cut_point, threshold=(cell[3] - cell[1])*0.3)
+        if not is_inline(frow, cell):
             frow = cell
             r += 1
         dc = dict(
             box=cell.tolist(),
-            row=r,
+            start_row=r,
+            end_row=r,
             start_col=sc,
             end_col=ec
         )
-        oc.append(dc)
-    table = dict(cells=oc)        
+        ocs.append(dc)
+    ocs = post_process(ocs)
+    table = dict(cells=ocs)        
     return table
 
 
+def xy2xyxy(box):
+    xyxy =[
+        [box[0], box[1]], 
+        [box[2], box[1]],
+        [box[2], box[3]], 
+        [box[0], box[3]]]
+    return xyxy
 
-if __name__ == '__main__':
-    _base_dir = "images"
-    img_list = sorted(os.listdir(_base_dir))
+
+def merge(cells):
+    points = []
+    for c in cells:
+        box = xy2xyxy(c["box"])
+        points.extend(box)
+    x, y, w, h = cv2.boundingRect(np.array(points))
+    box = [x, y, w+x, h+y]
+    return box
     
-    for i, img_name in enumerate(img_list):
-        img_path = P.join(_base_dir, img_name)
-        image = cv2.imread(img_path)
-        cells, vertical_sum, _ = get_cells(image)
-        table = cell_layout(cells, vertical_sum)
-        cells = table["cells"]
-        for k, oc in enumerate(cells):
-            r = oc["row"]
-            sc = oc["start_col"]
-            ec = oc["end_col"]
-            x1, y1, x2, y2 = oc["box"]
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255))
-            cv2.putText(image, f'{r}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-
-        cv2.imwrite(f"tmp/result_{i}.jpg", image)
+    
+def post_process(cells):
+    i = 0
+    while i<len(cells)-1:
+        cc = cells[i]
+        j = i + 1
+        while j < len(cells):
+            nc = cells[j]
+            if nc["start_row"] <= cc["end_row"]+1 and nc["start_col"] <= cc["end_col"] and is_inline(cc["box"], nc["box"]):
+                j += 1
+            else:
+                break
+        box = cc["box"] if j==i+1 else merge(cells[i:j])
+        cc["box"] = box
+        cc["end_col"] = cells[j-1]["end_col"]
+        cc["end_row"] = cells[j-1]["end_row"]
+        del cells[i+1:j]
+        # i = max(i+1, j-1)
+        i = i+1 if j==i+1 else i-1
+            
+    return cells
+        
