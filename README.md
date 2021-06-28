@@ -9,10 +9,10 @@
 #### 效果图如下
 
 - 保留文字区块的二值图
-![avatar](./tmp/erode_image.jpg)
+![image](tmp/erode_image.jpg)
 
 - 无表格线表格检测结果
-![avatar](./tmp/result_6.jpg)
+![image](tmp/result_6.jpg)
 
 - 有表格线检测结果
-![avatar](./tmp/result_3.jpg)
+![image](tmp/result_3.jpg)
