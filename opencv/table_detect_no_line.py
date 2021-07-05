@@ -13,7 +13,7 @@ import os.path as P
 import cv2
 import numpy as np
 
-from table_layout import cell_layout, quick_sort, is_inline
+from table_layout import cell_layout, quick_sort, is_inline, get_lines
 
 
 def get_cells(image):
@@ -59,7 +59,8 @@ def get_cells(image):
     cells = quick_sort(cells, 0, len(cells)-1)
     s, e = find_max_cols(cells)
     x_cut_point = get_x_cut_point(vertical_sum, cells, s, e)
-    return cells, x_cut_point, erode_image
+    y_cut_point = get_y_cut_point(cells)
+    return cells, x_cut_point, y_cut_point, dilated_col, dilated_row
 
 
 def find_max_cols(cells):
@@ -86,10 +87,12 @@ def find_max_cols(cells):
 
 def get_x_cut_point(vertical_sum, cells, s, e):
     cut_point = []
+    
     for k in range(s, e+1):
         if k == s:
-            j = cells[k][0]
-            p = np.argmin(vertical_sum[0:j])
+            # j = cells[k][0]
+            # p = np.argmin(vertical_sum[0:j])
+            p = min([c[0] for c in cells])
             i = cells[k][2]
         else:
             j = cells[k][0]
@@ -98,27 +101,98 @@ def get_x_cut_point(vertical_sum, cells, s, e):
             p = i + np.argmin(vertical_sum[i:j])
             i = cells[k][2]
         cut_point.append(p)
+    p = max([c[2] for c in cells[:-10]])
+    cut_point.append(p)
+    return cut_point
 
+
+
+def get_y_cut_point(cells):
+    cut_point = []
+    i = 0
+    rows = []
+    while i < len(cells)-1:
+        sc = cells[i]
+        j = i + 1
+        while j < len(cells):
+            ec = cells[j]
+            if is_inline(sc, ec, thr=0):
+                j += 1
+            else:
+                break
+        rows.append([i, j])
+        i = j
+    # si, ei = rows[0]
+    # cut_point.append(min([cells[j][1] for j in range(si, ei)])-5)
+    for i in range(len(rows)):
+        si, ei = rows[i]
+        if ei-si > 2:
+            break
+    
+    start_row = i
+    si, ei = rows[start_row]
+    print(i, si, ei)
+    cut_point.append(min([cells[j][1] for j in range(si, ei)])-5)
+    for i in range(start_row, len(rows)-1):
+        si, ei = rows[i]
+        nsi, nei = rows[i+1]
+        py = (max([cells[j][3] for j in range(si, ei)]) + min([cells[j][1] for j in range(nsi, nei)])) / 2 
+        cut_point.append(py)
+    si, ei = rows[i+1]
+    cut_point.append(max([cells[j][3] for j in range(si, ei)])+5)
     return cut_point
 
 
 if __name__ == '__main__':
-    _base_dir = "images/nolines/"
-    img_list = sorted(os.listdir(_base_dir))
+    import shutil
+    from pdf_to_image import pyMuPDF_fitz_cvimg
+    _base_dir = "/home/ting/Documents/data/finance/100家报表"
+    imgs_dir = "/home/ting/Documents/data/finance/images/"
+    label_dir = "/home/ting/Documents/data/finance/labels_auto/"
+    if not os.path.exists(imgs_dir):
+        os.makedirs(imgs_dir)
+        os.makedirs(label_dir)
+        
+    count = 0
+    # for root, dirs, files in os.walk(_base_dir):
+    #     for d in dirs:
+    #         for img_name in files:
     
-    for i, img_name in enumerate(img_list):
-        img_path = P.join(_base_dir, img_name)
-        image = cv2.imread(img_path)
-        cells, x_cut_point, _ = get_cells(image)
-        table = cell_layout(cells, x_cut_point)
-        cells = table["cells"]
-        for k, oc in enumerate(cells):
-            sr = oc["start_row"]
-            er = oc["end_row"]
-            sc = oc["start_col"]
-            ec = oc["end_col"]
-            x1, y1, x2, y2 = oc["box"]
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255))
-            cv2.putText(image, f'{k}_{sr}:{er}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-            
-        cv2.imwrite(f"tmp/result_{i}.jpg", image)
+    for r in os.listdir(_base_dir):
+        for d in os.listdir(os.path.join(_base_dir, r)):
+            for img_name in os.listdir(os.path.join(_base_dir,r, d)):
+                if img_name.startswith('.'):
+                    continue
+                file_path = P.join(_base_dir, r, d, img_name)
+                imgs = pyMuPDF_fitz_cvimg(file_path)
+                for image in imgs:
+                    cv2.imwrite(imgs_dir + str(count) + '.jpg', image)
+                    # cells, x_cut_point, y_cut_point, dilated_col, dilated_row = get_cells(image)
+                    # lines = get_lines(x_cut_point, y_cut_point, dilated_col, dilated_row)
+                    # table = cell_layout(cells, x_cut_point)
+                    # cells = table["cells"]
+                    # for k, oc in enumerate(cells):
+                    #     sr = oc["start_row"]
+                    #     er = oc["end_row"]
+                    #     sc = oc["start_col"]
+                    #     ec = oc["end_col"]
+                    #     x1, y1, x2, y2 = oc["box"]
+                    #     cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255))
+                    #     cv2.putText(image, f'{k}_{sr}:{er}_{sc}:{ec}', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                        
+                        
+                    # for l in lines:
+                    #     if l[-1] == 'obhl':
+                    #         cv2.line(image, (int(l[0]), int(l[1])), (int(l[2]), int(l[3])), (255, 0, 0), 1, cv2.LINE_AA)
+                    #     elif l[-1] == 'obvl':
+                    #         cv2.line(image, (int(l[0]), int(l[1])), (int(l[2]), int(l[3])), (0, 255, ), 1, cv2.LINE_AA)
+                    #     elif l[-1] == 'unobhl':
+                    #         cv2.line(image, (int(l[0]), int(l[1])), (int(l[2]), int(l[3])), (0, 0, 255), 1, cv2.LINE_AA)
+                    #     elif l[-1] == 'unobvl':
+                    #         cv2.line(image, (int(l[0]), int(l[1])), (int(l[2]), int(l[3])), (0, 0, 255), 1, cv2.LINE_AA)
+                    # label_file = label_dir + str(count) + '.txt'  
+                    # with open(label_file, 'a+', encoding="utf-8") as f:
+                    #     f.write("\n".join([",".join([str(l[0]), str(l[1]), str(l[2]), str(l[3]), l[4]]) for l in lines]))
+                        
+                    # cv2.imwrite(f"tmp/result_{count}.jpg", image)
+                    count += 1

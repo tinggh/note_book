@@ -9,6 +9,7 @@
 
 import cv2
 import numpy as np
+from numpy.lib.twodim_base import diag
 
 
 def is_inline(a, b, thr=0.15):
@@ -19,6 +20,8 @@ def is_inline(a, b, thr=0.15):
     if hiou > 0:
         flag = hiou/min(hb, ha) > thr
     return flag 
+
+
 
 def is_prior(a, b):
     flag = False
@@ -138,4 +141,55 @@ def post_process(cells):
         i = i+1 if j==i+1 else i-1
             
     return cells
-        
+
+
+
+# lsd = cv2.createLineSegmentDetector(0, _scale=1)
+ld = cv2.ximgproc.createFastLineDetector()
+def get_lines(x_cut_point, y_cut_point, dilated_col, dilated_row):
+    vlines = ld.detect(dilated_col)
+    hlines = ld.detect(dilated_row)
+    lines = []
+    
+    if vlines is not None:
+        vlines = np.squeeze(vlines)
+        vlines = sorted(vlines, key=lambda x: (x[0], x[1]))
+        xmin, xmax = vlines[0][0], vlines[0][2]
+        lines.append([vlines[0][0], vlines[0][1], vlines[0][2], vlines[0][3], "obvl"])
+        for i in range(len(vlines)-1):
+            if abs(vlines[i+1][0] - vlines[i][0]) < 5:
+                continue
+            else:
+                line = [vlines[i+1][0], vlines[i+1][1], vlines[i+1][2], vlines[i+1][3], "obvl"]
+                lines.append(line)
+            
+    if hlines is not None:
+        hlines = np.squeeze(hlines)
+        hlines = sorted(hlines, key=lambda x: (x[1], x[0]))
+        ymin, ymax = hlines[0][1], hlines[0][3]
+        lines.append([hlines[0][0], hlines[0][1], hlines[0][2], hlines[0][3], "obhl"])
+        for i in range(len(hlines)-1):
+            if abs(hlines[i+1][1] - hlines[i][1]) < 5:
+                continue
+            else:
+                line = [hlines[i+1][0], hlines[i+1][1], hlines[i+1][2], hlines[i+1][3], "obhl"]
+                lines.append(line)
+            
+    # for x in x_cut_point:
+    #     is_unobvl = True
+    #     for line in lines:
+    #         if abs(x-line[0]) < 25 and lines[-1] == "obvl":
+    #             is_unobvl = False
+    #             break
+    #     if is_unobvl:
+    #         lines.append([x, y_cut_point[0], x, y_cut_point[-1], "unobvl"])
+                
+    # for y in y_cut_point:
+    #     is_unobhl = True
+    #     for line in lines:
+    #         if abs(y-line[1]) < 10 and lines[-1] == "obhl":
+    #             is_unobhl = False
+    #             break
+    #     if is_unobhl:
+    #         lines.append([x_cut_point[0], y, x_cut_point[-1], y, "unobhl"])
+    return lines
